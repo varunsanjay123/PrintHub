@@ -37,10 +37,10 @@ export const AuthProvider = ({ children }) => {
     // Safety timeout to prevent infinite white screen
     const timeoutId = setTimeout(() => {
       if (loading) {
-        console.warn("Auth initialization timed out. Proceeding anyway.");
+        console.warn("Auth initialization taking longer than 10s. Forcing app to load.");
         setLoading(false);
       }
-    }, 5000);
+    }, 10000);
 
     let subscription;
 
