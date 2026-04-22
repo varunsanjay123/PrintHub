@@ -5,6 +5,7 @@ import { Upload as UploadIcon, Plus, Minus, X } from 'lucide-react';
 import { toast } from "sonner";
 import { useAuth } from '../../contexts/AuthContext';
 import { supabase } from '@/integrations/supabase/client';
+import { PDFDocument } from 'pdf-lib';
 
 const Upload = () => {
   const [files, setFiles] = useState([]);
@@ -13,10 +14,30 @@ const Upload = () => {
   const [colorPrint, setColorPrint] = useState(false);
   const [doubleSided, setDoubleSided] = useState(false);
   const [message, setMessage] = useState('');
+  const [totalPages, setTotalPages] = useState(0);
+  const [calculatingPages, setCalculatingPages] = useState(false);
   const fileInputRef = useRef(null);
   const { currentUser } = useAuth();
   const { submitOrder, serverActive } = usePrint();
   const navigate = useNavigate();
+
+  const calculateTotalPages = async (fileList) => {
+    setCalculatingPages(true);
+    let total = 0;
+    try {
+      for (const file of fileList) {
+        const arrayBuffer = await file.arrayBuffer();
+        const pdfDoc = await PDFDocument.load(arrayBuffer);
+        total += pdfDoc.getPageCount();
+      }
+      setTotalPages(total);
+    } catch (error) {
+      console.error("Error counting pages:", error);
+      toast.error("Could not read some PDF pages. Price might be inaccurate.");
+    } finally {
+      setCalculatingPages(false);
+    }
+  };
 
   const handleFileChange = (e) => {
     const selectedFiles = Array.from(e.target.files);
@@ -40,7 +61,9 @@ const Upload = () => {
       return true;
     });
     
-    setFiles(prev => [...prev, ...validFiles]);
+    const updatedFiles = [...files, ...validFiles];
+    setFiles(updatedFiles);
+    calculateTotalPages(updatedFiles);
   };
 
   const handleDrop = (e) => {
@@ -72,7 +95,9 @@ const Upload = () => {
       return true;
     });
     
-    setFiles(prev => [...prev, ...validFiles]);
+    const updatedFiles = [...files, ...validFiles];
+    setFiles(updatedFiles);
+    calculateTotalPages(updatedFiles);
   };
 
   const handleDragOver = (e) => {
@@ -80,7 +105,9 @@ const Upload = () => {
   };
 
   const removeFile = (index) => {
-    setFiles(prev => prev.filter((_, i) => i !== index));
+    const updatedFiles = files.filter((_, i) => i !== index);
+    setFiles(updatedFiles);
+    calculateTotalPages(updatedFiles);
   };
 
   const handleFileInputClick = () => {
@@ -329,13 +356,40 @@ const Upload = () => {
             ></textarea>
           </div>
           
+          <div className="mb-8 p-4 bg-indigo-50 rounded-lg border border-indigo-100">
+            <h3 className="text-lg font-semibold text-indigo-900 mb-3 flex items-center">
+              <span className="mr-2">💰</span> Price Summary
+            </h3>
+            <div className="space-y-2">
+              <div className="flex justify-between text-sm text-indigo-700">
+                <span>Total Pages:</span>
+                <span className="font-medium">{calculatingPages ? 'Calculating...' : totalPages}</span>
+              </div>
+              <div className="flex justify-between text-sm text-indigo-700">
+                <span>Price per Page:</span>
+                <span className="font-medium">₹2.00</span>
+              </div>
+              <div className="flex justify-between text-sm text-indigo-700">
+                <span>Number of Copies:</span>
+                <span className="font-medium">x {copies}</span>
+              </div>
+              <div className="pt-2 mt-2 border-t border-indigo-200 flex justify-between text-lg font-bold text-indigo-900">
+                <span>Total Amount:</span>
+                <span>₹{(totalPages * 2 * copies).toFixed(2)}</span>
+              </div>
+            </div>
+            <p className="text-[10px] text-indigo-400 mt-2 italic">
+              * Base price is ₹2 per page. Final amount may vary based on print options.
+            </p>
+          </div>
+          
           <div className="flex justify-end">
             <button
               type="submit"
-              disabled={submitting || !serverActive || files.length === 0}
-              className="px-6 py-3 bg-primary text-white rounded-md hover:bg-indigo-700 disabled:opacity-50"
+              disabled={submitting || !serverActive || files.length === 0 || calculatingPages}
+              className="px-8 py-3 bg-primary text-white rounded-md hover:bg-indigo-700 disabled:opacity-50 font-bold text-lg shadow-md transition-all active:scale-[0.98]"
             >
-              {submitting ? 'Submitting Order...' : 'Submit Order'}
+              {submitting ? 'Submitting Order...' : `Pay ₹${(totalPages * 2 * copies).toFixed(2)} & Submit`}
             </button>
           </div>
         </form>
