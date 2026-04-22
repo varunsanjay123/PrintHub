@@ -89,6 +89,8 @@ const Upload = () => {
     }
   };
 
+  const [submitting, setSubmitting] = useState(false);
+
   const handleSubmit = async (e) => {
     e.preventDefault();
     
@@ -101,35 +103,53 @@ const Upload = () => {
       toast.error('Please upload at least one file');
       return;
     }
+
+    setSubmitting(true);
+    const uploadToastId = toast.loading(`Uploading ${files.length} file(s)...`);
     
-    // Upload all files to Supabase Storage and collect their names and URLs
-    const uploadedFiles = [];
-    for (const file of files) {
-      const fileExt = file.name.split('.').pop();
-      const fileName = `${currentUser.id}/${Math.random().toString(36).substring(2, 15)}.${fileExt}`;
-      const { data: fileData2, error: uploadError } = await supabase.storage
-        .from('documents')
-        .upload(fileName, file);
-      if (uploadError) {
-        console.error("Supabase Storage Upload Error:", uploadError);
-        toast.error(`Failed to upload ${file.name}: ${uploadError.message || 'Unknown error'}`);
-        return;
+    try {
+      // Upload all files in parallel to Supabase Storage
+      const uploadPromises = files.map(async (file) => {
+        const fileExt = file.name.split('.').pop();
+        const fileName = `${currentUser.id}/${Math.random().toString(36).substring(2, 15)}.${fileExt}`;
+        
+        const { error: uploadError } = await supabase.storage
+          .from('documents')
+          .upload(fileName, file);
+          
+        if (uploadError) {
+          throw new Error(`Failed to upload ${file.name}: ${uploadError.message}`);
+        }
+        
+        const { data: { publicUrl } } = supabase.storage.from('documents').getPublicUrl(fileName);
+        return { name: file.name, url: publicUrl };
+      });
+
+      const uploadedFiles = await Promise.all(uploadPromises);
+      
+      toast.loading("Creating order...", { id: uploadToastId });
+      
+      // Submit a single order with all files
+      const order = await submitOrder(
+        uploadedFiles,
+        printType,
+        copies,
+        colorPrint,
+        doubleSided,
+        message
+      );
+      
+      if (order) {
+        toast.success("Order submitted successfully!", { id: uploadToastId });
+        navigate(`/student/payment/${order.id}`);
+      } else {
+        toast.error("Failed to submit order", { id: uploadToastId });
       }
-      const { data: { publicUrl } } = supabase.storage.from('documents').getPublicUrl(fileName);
-      uploadedFiles.push({ name: file.name, url: publicUrl });
-    }
-    
-    // Submit a single order with all files
-    const order = await submitOrder(
-      uploadedFiles,
-      printType,
-      copies,
-      colorPrint,
-      doubleSided,
-      message
-    );
-    if (order) {
-      navigate(`/student/payment/${order.id}`);
+    } catch (error) {
+      console.error("Submission Error:", error);
+      toast.error(error.message || "An error occurred during submission", { id: uploadToastId });
+    } finally {
+      setSubmitting(false);
     }
   };
 
@@ -302,10 +322,10 @@ const Upload = () => {
           <div className="flex justify-end">
             <button
               type="submit"
+              disabled={submitting || !serverActive || files.length === 0}
               className="px-6 py-3 bg-primary text-white rounded-md hover:bg-indigo-700 disabled:opacity-50"
-              disabled={!serverActive || files.length === 0}
             >
-              Submit Order
+              {submitting ? 'Submitting Order...' : 'Submit Order'}
             </button>
           </div>
         </form>
