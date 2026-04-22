@@ -25,6 +25,9 @@ tailwind-merge >= 2.5.2
 react-hook-form >= 7.53.0
 zod >= 3.23.8
 
+# PDF Handling
+pdf-lib >= 1.17.1
+
 # Development Tools
 typescript >= 5.5.3
 postcss >= 8.4.47
