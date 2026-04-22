@@ -105,29 +105,39 @@ const Upload = () => {
     }
 
     setSubmitting(true);
-    const uploadToastId = toast.loading(`Uploading ${files.length} file(s)...`);
+    const uploadToastId = toast.loading(`Preparing ${files.length} file(s)...`);
     
     try {
-      // Upload all files in parallel to Supabase Storage
-      const uploadPromises = files.map(async (file) => {
+      const uploadedFiles = [];
+      
+      for (let i = 0; i < files.length; i++) {
+        const file = files[i];
+        toast.loading(`Uploading file ${i + 1} of ${files.length}: ${file.name}...`, { id: uploadToastId });
+        
         const fileExt = file.name.split('.').pop();
         const fileName = `${currentUser.id}/${Math.random().toString(36).substring(2, 15)}.${fileExt}`;
         
-        const { error: uploadError } = await supabase.storage
+        // Timeout helper
+        const timeoutPromise = new Promise((_, reject) => 
+          setTimeout(() => reject(new Error(`Upload timed out for ${file.name}. Check your connection.`)), 45000)
+        );
+
+        // Upload with timeout
+        const uploadPromise = supabase.storage
           .from('documents')
           .upload(fileName, file);
+
+        const { error: uploadError } = await Promise.race([uploadPromise, timeoutPromise]);
           
         if (uploadError) {
           throw new Error(`Failed to upload ${file.name}: ${uploadError.message}`);
         }
         
         const { data: { publicUrl } } = supabase.storage.from('documents').getPublicUrl(fileName);
-        return { name: file.name, url: publicUrl };
-      });
-
-      const uploadedFiles = await Promise.all(uploadPromises);
+        uploadedFiles.push({ name: file.name, url: publicUrl });
+      }
       
-      toast.loading("Creating order...", { id: uploadToastId });
+      toast.loading("Creating your order...", { id: uploadToastId });
       
       // Submit a single order with all files
       const order = await submitOrder(
@@ -143,11 +153,11 @@ const Upload = () => {
         toast.success("Order submitted successfully!", { id: uploadToastId });
         navigate(`/student/payment/${order.id}`);
       } else {
-        toast.error("Failed to submit order", { id: uploadToastId });
+        toast.error("Failed to create order. Please try again.", { id: uploadToastId });
       }
     } catch (error) {
       console.error("Submission Error:", error);
-      toast.error(error.message || "An error occurred during submission", { id: uploadToastId });
+      toast.error(error.message || "An error occurred during submission. Please check your internet.", { id: uploadToastId });
     } finally {
       setSubmitting(false);
     }
